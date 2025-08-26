@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Test - Aldersbach Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); }
+        .modal-content { background: white; margin: 50px auto; padding: 20px; width: 80%; max-width: 600px; border-radius: 8px; }
+        button { padding: 8px 16px; margin: 5px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>🔬 Simple Test Version</h1>
+    
+    <div>
+        <button onclick="testModal()">Test Modal</button>
+        <button onclick="testConsole()">Test Console</button>
+        <button onclick="testBasics()">Test Basics</button>
+    </div>
+    
+    <div id="results" style="margin-top: 20px; padding: 15px; background: #f0f0f0;"></div>
+    
+    <!-- Simple Modal -->
+    <div id="testModal" class="modal">
+        <div class="modal-content">
+            <h2>Test Modal</h2>
+            <p>This modal works!</p>
+            <button onclick="closeModal()">Close</button>
+        </div>
+    </div>
+
+    <script>
+        // Simple console logger
+        function log(message) {
+            console.log('TEST:', message);
+            const results = document.getElementById('results');
+            results.innerHTML += '<div>' + new Date().toLocaleTimeString() + ': ' + message + '</div>';
+        }
+
+        function testModal() {
+            log('Opening test modal...');
+            document.getElementById('testModal').style.display = 'block';
+        }
+
+        function closeModal() {
+            log('Closing test modal...');
+            document.getElementById('testModal').style.display = 'none';
+        }
+
+        function testConsole() {
+            log('Testing console output...');
+            console.log('Direct console.log test');
+            console.error('Direct console.error test');
+            console.warn('Direct console.warn test');
+        }
+
+        function testBasics() {
+            log('Testing basic JavaScript...');
+            
+            // Test DOM access
+            const body = document.body;
+            log('Body element found: ' + (body ? 'YES' : 'NO'));
+            
+            // Test querySelector
+            const results = document.querySelector('#results');
+            log('Results element found: ' + (results ? 'YES' : 'NO'));
+            
+            // Test basic operations
+            const testArray = [1, 2, 3];
+            log('Array operations work: ' + (testArray.length === 3 ? 'YES' : 'NO'));
+            
+            // Test fetch (basic)
+            log('Testing fetch availability: ' + (typeof fetch !== 'undefined' ? 'YES' : 'NO'));
+        }
+
+        // Initialize
+        log('Simple test page loaded successfully');
+        
+        // Test error handling
+        window.onerror = function(msg, url, line, col, error) {
+            log('ERROR CAUGHT: ' + msg + ' (line ' + line + ')');
+            return false;
+        };
+    </script>
+</body>
+</html>

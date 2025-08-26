@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aldersbach Monastery Financial Dashboard - Working Version</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="simple_logger.js"></script>
+</head>
+<body>
+    <!-- Transaction Detail Modal -->
+    <div id="transactionModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>📜 Transaction Details</h2>
+                <span class="modal-close" id="modalClose">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="modal-tabs">
+                    <button class="tab-btn active" data-tab="overview">Overview</button>
+                    <button class="tab-btn" data-tab="raw">Raw XML</button>
+                    <button class="tab-btn" data-tab="entities">Entities</button>
+                    <button class="tab-btn" data-tab="related">Related</button>
+                </div>
+                
+                <div class="tab-content active" id="tab-overview">
+                    <div class="detail-section">
+                        <h3>📅 Transaction Information</h3>
+                        <div class="detail-grid">
+                            <div class="detail-item">
+                                <label>Date:</label>
+                                <span id="modalDate">-</span>
+                            </div>
+                            <div class="detail-item">
+                                <label>Amount:</label>
+                                <span id="modalAmount">-</span>
+                            </div>
+                            <div class="detail-item">
+                                <label>Currency:</label>
+                                <span id="modalCurrency">-</span>
+                            </div>
+                            <div class="detail-item">
+                                <label>Type:</label>
+                                <span id="modalType">-</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="detail-section">
+                        <h3>📝 Original Entry</h3>
+                        <div class="entry-text" id="modalEntry">-</div>
+                    </div>
+                </div>
+                
+                <div class="tab-content" id="tab-raw">
+                    <div class="detail-section">
+                        <h3>🔍 Raw XML Data</h3>
+                        <pre class="xml-display" id="modalXML">-</pre>
+                    </div>
+                </div>
+                
+                <div class="tab-content" id="tab-entities">
+                    <div class="detail-section">
+                        <h3>👥 Extracted Entities</h3>
+                        <div id="modalEntities">Loading entities...</div>
+                    </div>
+                </div>
+                
+                <div class="tab-content" id="tab-related">
+                    <div class="detail-section">
+                        <h3>🔗 Related Transactions</h3>
+                        <div id="modalRelated">Finding related transactions...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="dashboard">
+        <header class="header">
+            <h1>📜 Aldersbach Monastery Financial Records</h1>
+            <p class="subtitle">Historical Transaction Explorer (Anno 1557) - Working Version</p>
+        </header>
+
+        <div class="controls">
+            <div class="control-group">
+                <label for="fileSelect">Data File:</label>
+                <select id="fileSelect">
+                    <option value="">Select a data file...</option>
+                    <option value="data/o_depcha.aldersbach.1.xml">Main Records (1.xml)</option>
+                    <option value="data/o_depcha.aldersbach.L341.xml">L341 Records</option>
+                    <option value="data/o_depcha.aldersbach.L342.xml">L342 Records</option>
+                    <option value="data/o_depcha.aldersbach.L343.xml">L343 Records</option>
+                    <option value="data/o_depcha.aldersbach.L344.xml">L344 Records</option>
+                    <option value="data/o_depcha.aldersbach.L345.xml">L345 Records</option>
+                    <option value="data/o_depcha.aldersbach.L346.xml">L346 Records</option>
+                </select>
+                <button id="loadData">Load Data</button>
+            </div>
+
+            <div class="control-group">
+                <label for="searchBox">Search Transactions:</label>
+                <input type="text" id="searchBox" placeholder="Search in German text, amounts, or people...">
+            </div>
+
+            <div class="control-group">
+                <label for="currencyFilter">Currency:</label>
+                <select id="currencyFilter">
+                    <option value="">All Currencies</option>
+                    <option value="f">Florin (f)</option>
+                    <option value="s">Shilling (s)</option>
+                    <option value="d">Denarius (d)</option>
+                    <option value="gr">Groschen (gr)</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label for="sortBy">Sort by:</label>
+                <select id="sortBy">
+                    <option value="date">Date (newest first)</option>
+                    <option value="amount">Amount (highest first)</option>
+                    <option value="entry">Entry (alphabetical)</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="stats">
+            <div class="stat-card">
+                <h3>Total Transactions</h3>
+                <div class="stat-value" id="totalTransactions">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>Total Value</h3>
+                <div class="stat-value" id="totalValue">0 florins</div>
+            </div>
+            <div class="stat-card">
+                <h3>Date Range</h3>
+                <div class="stat-value" id="dateRange">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>Unique People</h3>
+                <div class="stat-value" id="uniquePeople">0</div>
+            </div>
+        </div>
+
+        <div class="loading" id="loading" style="display: none;">
+            <p>Loading transaction data...</p>
+        </div>
+
+        <div class="transactions-container">
+            <table class="transactions-table" id="transactionsTable">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Entry (German)</th>
+                        <th>Amount</th>
+                        <th>Currency</th>
+                        <th>Type</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="transactionsBody">
+                    <tr>
+                        <td colspan="6" class="no-data">Select a data file to view transactions</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pagination">
+            <button id="prevPage" disabled>← Previous</button>
+            <span id="pageInfo">Page 1 of 1</span>
+            <button id="nextPage" disabled>Next →</button>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

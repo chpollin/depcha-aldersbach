@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+</head>
+<body>
+    <h1>Debug Test</h1>
+    <div id="output"></div>
+    
+    <script>
+        const output = document.getElementById('output');
+        
+        // Test Chart.js
+        output.innerHTML += '<p>Chart available: ' + (typeof Chart !== 'undefined') + '</p>';
+        
+        // Test zoom plugin
+        output.innerHTML += '<p>ChartZoom available: ' + (typeof ChartZoom !== 'undefined') + '</p>';
+        
+        // Check window object
+        output.innerHTML += '<p>window.ChartZoom available: ' + (typeof window.ChartZoom !== 'undefined') + '</p>';
+        
+        // Check Chart plugins
+        if (typeof Chart !== 'undefined') {
+            output.innerHTML += '<p>Chart.registry available: ' + (typeof Chart.registry !== 'undefined') + '</p>';
+        }
+        
+        // List available Chart properties
+        if (typeof Chart !== 'undefined') {
+            const chartProps = Object.keys(Chart).slice(0, 10);
+            output.innerHTML += '<p>Chart properties: ' + chartProps.join(', ') + '</p>';
+        }
+        
+        // Check for zoom under different names
+        const possibleZoomRefs = ['ChartZoom', 'chartjs-plugin-zoom', 'zoomPlugin'];
+        possibleZoomRefs.forEach(ref => {
+            output.innerHTML += '<p>' + ref + ' in window: ' + (ref in window) + '</p>';
+        });
+    </script>
+</body>
+</html>
