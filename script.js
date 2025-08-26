@@ -14,6 +14,18 @@ class AlderbachDashboard {
         this.initializeCharts();
         
         this.logger.success('Dashboard initialized successfully');
+        
+        // Add error reporting to help debug issues
+        window.onerror = (msg, url, line, col, error) => {
+            this.logger.error('JavaScript error caught', {
+                message: msg,
+                source: url,
+                line: line,
+                column: col,
+                error: error ? error.stack : 'No error object'
+            });
+            return false;
+        };
     }
 
     initializeElements() {
@@ -47,6 +59,11 @@ class AlderbachDashboard {
         this.modalClose = document.getElementById('modalClose');
         this.tabBtns = document.querySelectorAll('.tab-btn');
         this.tabContents = document.querySelectorAll('.tab-content');
+        
+        // Check if modal elements exist
+        if (!this.modal || !this.modalClose) {
+            this.logger.warn('Modal elements not found, modal functionality may not work');
+        }
     }
 
     bindEvents() {
@@ -75,20 +92,26 @@ class AlderbachDashboard {
         });
         
         // Modal events
-        this.modalClose.addEventListener('click', () => this.closeTransactionModal());
-        this.modal.addEventListener('click', (e) => {
-            if (e.target === this.modal) {
-                this.closeTransactionModal();
-            }
-        });
+        if (this.modalClose) {
+            this.modalClose.addEventListener('click', () => this.closeTransactionModal());
+        }
+        if (this.modal) {
+            this.modal.addEventListener('click', (e) => {
+                if (e.target === this.modal) {
+                    this.closeTransactionModal();
+                }
+            });
+        }
         
         // Tab switching
-        this.tabBtns.forEach(btn => {
-            btn.addEventListener('click', () => {
-                const tabName = btn.dataset.tab;
-                this.switchModalTab(tabName);
+        if (this.tabBtns.length > 0) {
+            this.tabBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const tabName = btn.dataset.tab;
+                    this.switchModalTab(tabName);
+                });
             });
-        });
+        }
     }
 
     async loadData() {
@@ -207,7 +230,7 @@ class AlderbachDashboard {
                         totalFlorinValue: totalFlorinValue,
                         type: type,
                         people: people,
-                        rawXML: transactionElement ? transactionElement.outerHTML : ''
+                        rawXML: transaction ? transaction.outerHTML : ''
                     });
                 }
             } catch (error) {
@@ -489,8 +512,26 @@ class AlderbachDashboard {
                 ]
             };
 
-            // Register the zoom plugin
-            Chart.register(ChartZoom);
+            // Register the zoom plugin - try multiple possible references
+            let zoomPluginRegistered = false;
+            
+            if (typeof window.ChartZoom !== 'undefined') {
+                Chart.register(window.ChartZoom);
+                this.logger.info('Chart zoom plugin registered successfully (window.ChartZoom)');
+                zoomPluginRegistered = true;
+            } else if (typeof ChartZoom !== 'undefined') {
+                Chart.register(ChartZoom);
+                this.logger.info('Chart zoom plugin registered successfully (ChartZoom)');
+                zoomPluginRegistered = true;
+            } else if (window.chartjs && window.chartjs.plugins && window.chartjs.plugins.zoom) {
+                Chart.register(window.chartjs.plugins.zoom);
+                this.logger.info('Chart zoom plugin registered successfully (chartjs.plugins.zoom)');
+                zoomPluginRegistered = true;
+            } else {
+                this.logger.warn('Chart zoom plugin not available, zoom functionality disabled');
+            }
+            
+            this.zoomPluginAvailable = zoomPluginRegistered;
             
             this.initializeTimelineChart();
             this.initializeCurrencyChart();
@@ -511,6 +552,40 @@ class AlderbachDashboard {
     initializeTimelineChart() {
         try {
             const ctx = this.timelineCanvas.getContext('2d');
+            
+            // Check if zoom plugin is available
+            const zoomConfig = this.zoomPluginAvailable ? {
+                zoom: {
+                    zoom: {
+                        wheel: {
+                            enabled: true,
+                        },
+                        pinch: {
+                            enabled: true
+                        },
+                        mode: 'x',
+                        onZoomComplete: ({chart}) => {
+                            this.logger.info('Chart zoomed', {
+                                xMin: chart.scales.x.min,
+                                xMax: chart.scales.x.max
+                            });
+                        }
+                    },
+                    pan: {
+                        enabled: true,
+                        mode: 'x',
+                        onPanComplete: ({chart}) => {
+                            this.logger.info('Chart panned', {
+                                xMin: chart.scales.x.min,
+                                xMax: chart.scales.x.max
+                            });
+                        }
+                    },
+                    limits: {
+                        x: {min: 'original', max: 'original'}
+                    }
+                }
+            } : {};
             
             this.charts.timeline = new Chart(ctx, {
             type: 'line',
@@ -598,38 +673,7 @@ class AlderbachDashboard {
                     intersect: false,
                     mode: 'index'
                 },
-                plugins: {
-                    zoom: {
-                        zoom: {
-                            wheel: {
-                                enabled: true,
-                            },
-                            pinch: {
-                                enabled: true
-                            },
-                            mode: 'x',
-                            onZoomComplete: ({chart}) => {
-                                this.logger.info('Chart zoomed', {
-                                    xMin: chart.scales.x.min,
-                                    xMax: chart.scales.x.max
-                                });
-                            }
-                        },
-                        pan: {
-                            enabled: true,
-                            mode: 'x',
-                            onPanComplete: ({chart}) => {
-                                this.logger.info('Chart panned', {
-                                    xMin: chart.scales.x.min,
-                                    xMax: chart.scales.x.max
-                                });
-                            }
-                        },
-                        limits: {
-                            x: {min: 'original', max: 'original'}
-                        }
-                    }
-                }
+                plugins: Object.keys(zoomConfig).length > 0 ? zoomConfig : {}
             }
         });
             
@@ -748,8 +792,14 @@ class AlderbachDashboard {
 
     resetTimelineZoom() {
         if (this.charts.timeline) {
-            this.charts.timeline.resetZoom();
-            this.logger.info('Timeline chart zoom reset');
+            if (typeof this.charts.timeline.resetZoom === 'function') {
+                this.charts.timeline.resetZoom();
+                this.logger.info('Timeline chart zoom reset');
+            } else {
+                this.logger.warn('Zoom reset not available - zoom plugin not loaded');
+                // Fallback: recreate the chart
+                this.updateTimelineChart();
+            }
         }
     }
 
