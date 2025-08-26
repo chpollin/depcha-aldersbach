@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Dashboard - Aldersbach Monastery</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f5f5;
+            margin: 0;
+            padding: 20px;
+        }
+        .debug-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        .debug-header {
+            text-align: center;
+            color: #8B4513;
+            margin-bottom: 30px;
+        }
+        .debug-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        .debug-section h3 {
+            color: #8B4513;
+            margin-top: 0;
+        }
+        .debug-button {
+            background: #8B4513;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        .debug-button:hover {
+            background: #A0522D;
+        }
+        .output {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 10px;
+            font-family: monospace;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status-success { background: #28a745; }
+        .status-warning { background: #ffc107; }
+        .status-error { background: #dc3545; }
+        .metric-card {
+            display: inline-block;
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 5px;
+            min-width: 150px;
+            text-align: center;
+        }
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #8B4513;
+        }
+        .metric-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+    <div class="debug-container">
+        <div class="debug-header">
+            <h1>🔧 Debug Dashboard</h1>
+            <p>Logging, Testing & Performance Monitoring for Aldersbach Dashboard</p>
+        </div>
+
+        <div class="debug-section">
+            <h3><span class="status-indicator status-success"></span>Logging System</h3>
+            <p>Compact logging with performance monitoring and error tracking.</p>
+            <button class="debug-button" onclick="testLogging()">Test All Log Levels</button>
+            <button class="debug-button" onclick="simulateError()">Simulate Error</button>
+            <button class="debug-button" onclick="exportLogs()">Export Debug Logs</button>
+            <button class="debug-button" onclick="clearLogs()">Clear Stored Logs</button>
+            <div id="logging-output" class="output" style="display: none;"></div>
+        </div>
+
+        <div class="debug-section">
+            <h3><span class="status-indicator status-success"></span>Performance Monitoring</h3>
+            <p>Real-time performance metrics and timing analysis.</p>
+            <button class="debug-button" onclick="showPerformanceMetrics()">Show Metrics</button>
+            <button class="debug-button" onclick="simulateSlowOperation()">Simulate Slow Operation</button>
+            <button class="debug-button" onclick="measureMemoryUsage()">Memory Usage</button>
+            <div id="performance-metrics" class="output"></div>
+        </div>
+
+        <div class="debug-section">
+            <h3><span class="status-indicator status-warning"></span>Automated Testing</h3>
+            <p>Comprehensive test suite for dashboard functionality.</p>
+            <button class="debug-button" onclick="runFullTestSuite()">Run Full Test Suite</button>
+            <button class="debug-button" onclick="runQuickTests()">Quick Health Check</button>
+            <button class="debug-button" onclick="testChartFunctionality()">Test Charts</button>
+            <div id="test-output" class="output" style="display: none;"></div>
+        </div>
+
+        <div class="debug-section">
+            <h3><span class="status-indicator status-success"></span>Session Metrics</h3>
+            <p>Current session statistics and usage data.</p>
+            <div id="session-metrics">
+                <div class="metric-card">
+                    <div class="metric-value" id="session-duration">0s</div>
+                    <div class="metric-label">Session Duration</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value" id="memory-usage">0MB</div>
+                    <div class="metric-label">Memory Usage</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value" id="log-count">0</div>
+                    <div class="metric-label">Critical Logs</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value" id="error-count">0</div>
+                    <div class="metric-label">Errors</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="debug-section">
+            <h3>🚀 Quick Actions</h3>
+            <p>Common debugging tasks and utilities.</p>
+            <button class="debug-button" onclick="window.open('index.html', '_blank')">Open Main Dashboard</button>
+            <button class="debug-button" onclick="window.open('index.html?debug=verbose', '_blank')">Open with Verbose Logging</button>
+            <button class="debug-button" onclick="showConsoleHelp()">Show Console Commands</button>
+        </div>
+    </div>
+
+    <script src="logger.js"></script>
+    <script src="tests.js"></script>
+    
+    <script>
+        // Debug page functionality
+        let logger;
+        
+        function initializeDebugPage() {
+            logger = window.Logger;
+            logger.info('Debug page initialized');
+            updateMetrics();
+            
+            // Update metrics every 5 seconds
+            setInterval(updateMetrics, 5000);
+        }
+
+        function testLogging() {
+            const output = document.getElementById('logging-output');
+            output.style.display = 'block';
+            output.innerHTML = 'Running logging tests...\n';
+            
+            // Test all log levels
+            logger.debug('Debug message test', { testData: 'debug info' });
+            logger.info('Info message test', { testData: 'info data' });
+            logger.warn('Warning message test', { testData: 'warning data' });
+            logger.error('Error message test', { testData: 'error data' });
+            logger.success('Success message test', { testData: 'success data' });
+            
+            output.innerHTML += 'Check browser console for colored log output.\n';
+            output.innerHTML += 'Log levels: DEBUG, INFO, WARN, ERROR, SUCCESS\n';
+        }
+
+        function simulateError() {
+            try {
+                // Intentionally cause an error
+                const undefined_function = nonExistentFunction();
+            } catch (error) {
+                logger.error('Simulated error for testing', {
+                    message: error.message,
+                    stack: error.stack,
+                    timestamp: new Date().toISOString()
+                });
+            }
+        }
+
+        function exportLogs() {
+            logger.exportLogs();
+            logger.success('Debug logs exported to downloads');
+        }
+
+        function clearLogs() {
+            logger.clearLogs();
+            logger.info('Stored logs cleared');
+            updateMetrics();
+        }
+
+        function showPerformanceMetrics() {
+            const metrics = logger.getSessionSummary();
+            const output = document.getElementById('performance-metrics');
+            
+            output.innerHTML = `
+Performance Metrics:
+- Session Duration: ${metrics.duration}
+- Memory Usage: ${JSON.stringify(metrics.memoryUsage, null, 2)}
+- Operations: ${JSON.stringify(metrics.metrics, null, 2)}
+- Session ID: ${metrics.sessionId}
+- Timestamp: ${metrics.timestamp}
+            `;
+        }
+
+        function simulateSlowOperation() {
+            const timerId = logger.startTimer('slow_simulation');
+            
+            // Simulate slow operation
+            setTimeout(() => {
+                const duration = logger.endTimer(timerId, 'slow operation simulation');
+                logger.warn('Slow operation completed', { duration: `${duration}ms` });
+                showPerformanceMetrics();
+            }, 250);
+        }
+
+        function measureMemoryUsage() {
+            const usage = logger.getMemoryUsage();
+            logger.info('Current memory usage', usage);
+            showPerformanceMetrics();
+        }
+
+        async function runFullTestSuite() {
+            const output = document.getElementById('test-output');
+            output.style.display = 'block';
+            output.innerHTML = 'Running full test suite...\n';
+            
+            try {
+                // Mock dashboard for testing
+                if (!window.dashboardInstance) {
+                    window.dashboardInstance = {
+                        transactions: [],
+                        convertToFlorin: (amount, currency) => {
+                            const rates = { f: 1, s: 1/30, d: 1/240, gr: 1/20 };
+                            return amount * (rates[currency] || 0);
+                        },
+                        extractPeopleAndPlaces: (text) => {
+                            return text.match(/[A-Z][a-z]+/g) || [];
+                        },
+                        parseXMLData: () => {},
+                        charts: null
+                    };
+                }
+                
+                const results = await runDashboardTests();
+                
+                output.innerHTML += `
+Test Results:
+- Total Tests: ${results.total}
+- Passed: ${results.passed} ✓
+- Failed: ${results.failed} ✗
+- Success Rate: ${Math.round((results.passed / results.total) * 100)}%
+
+Check console for detailed test output.
+                `;
+            } catch (error) {
+                output.innerHTML += `Test suite error: ${error.message}`;
+                logger.error('Test suite execution failed', { error: error.message });
+            }
+        }
+
+        function runQuickTests() {
+            const output = document.getElementById('test-output');
+            output.style.display = 'block';
+            output.innerHTML = 'Running quick health checks...\n';
+            
+            const checks = [
+                () => typeof logger !== 'undefined' ? 'Logger available ✓' : 'Logger missing ✗',
+                () => typeof Chart !== 'undefined' ? 'Chart.js loaded ✓' : 'Chart.js missing ✗',
+                () => window.debugUtils ? 'Debug utilities available ✓' : 'Debug utilities missing ✗',
+                () => localStorage ? 'Local storage available ✓' : 'Local storage missing ✗'
+            ];
+            
+            checks.forEach((check, i) => {
+                try {
+                    const result = check();
+                    output.innerHTML += `${i + 1}. ${result}\n`;
+                } catch (error) {
+                    output.innerHTML += `${i + 1}. Check failed: ${error.message}\n`;
+                }
+            });
+        }
+
+        function testChartFunctionality() {
+            const output = document.getElementById('test-output');
+            output.style.display = 'block';
+            
+            if (typeof Chart === 'undefined') {
+                output.innerHTML = 'Chart.js not loaded - cannot test charts';
+                return;
+            }
+            
+            output.innerHTML = 'Testing chart functionality...\n';
+            
+            try {
+                // Create a test canvas
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                // Create a simple test chart
+                const testChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: ['Jan', 'Feb', 'Mar'],
+                        datasets: [{
+                            label: 'Test Data',
+                            data: [10, 20, 15]
+                        }]
+                    }
+                });
+                
+                output.innerHTML += 'Chart creation: Success ✓\n';
+                output.innerHTML += 'Chart type: ' + testChart.config.type + '\n';
+                output.innerHTML += 'Data points: ' + testChart.data.datasets[0].data.length + '\n';
+                
+                // Test chart methods
+                testChart.update();
+                output.innerHTML += 'Chart update: Success ✓\n';
+                
+                // Clean up
+                testChart.destroy();
+                output.innerHTML += 'Chart cleanup: Success ✓\n';
+                
+            } catch (error) {
+                output.innerHTML += 'Chart test failed: ' + error.message + '\n';
+                logger.error('Chart functionality test failed', { error: error.message });
+            }
+        }
+
+        function updateMetrics() {
+            const summary = logger.getSessionSummary();
+            
+            // Update session duration
+            document.getElementById('session-duration').textContent = summary.duration;
+            
+            // Update memory usage
+            if (summary.memoryUsage && summary.memoryUsage.used) {
+                document.getElementById('memory-usage').textContent = summary.memoryUsage.used;
+            }
+            
+            // Update error count
+            document.getElementById('error-count').textContent = summary.metrics.errors || 0;
+            
+            // Update log count
+            try {
+                const logs = JSON.parse(localStorage.getItem('aldersbach_logs') || '[]');
+                document.getElementById('log-count').textContent = logs.length;
+            } catch (e) {
+                document.getElementById('log-count').textContent = '0';
+            }
+        }
+
+        function showConsoleHelp() {
+            logger.info('Debug Console Commands', {
+                'debugUtils.exportLogs()': 'Export all debug logs',
+                'debugUtils.clearLogs()': 'Clear stored logs',
+                'debugUtils.getMetrics()': 'Get current metrics',
+                'debugUtils.runTests()': 'Run automated tests',
+                'performanceMonitor.getMetrics()': 'Get performance data',
+                'window.Logger.debug/info/warn/error()': 'Manual logging'
+            });
+            
+            console.log('%cAvailable Debug Commands:', 'color: #8B4513; font-size: 16px; font-weight: bold;');
+            console.log('debugUtils.exportLogs() - Export debug logs');
+            console.log('debugUtils.clearLogs() - Clear stored logs');
+            console.log('debugUtils.getMetrics() - Get session metrics');
+            console.log('debugUtils.runTests() - Run test suite');
+            console.log('performanceMonitor.getMetrics() - Performance data');
+        }
+
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', initializeDebugPage);
+    </script>
+</body>
+</html>

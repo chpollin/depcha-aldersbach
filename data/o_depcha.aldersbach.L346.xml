@@ -1,0 +1,1 @@
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:g2o="http://gams.uni-graz.at/ontology/#"><rdf:Description rdf:about="http://gams.uni-graz.at/o:yoda"><g2o:sameAs rdf:resource="info:fedora/o:yoda/TEST" /></rdf:Description></rdf:RDF>
