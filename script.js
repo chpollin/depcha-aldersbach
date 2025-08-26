@@ -40,6 +40,13 @@ class AlderbachDashboard {
         this.currencyMetric = document.getElementById('currencyMetric');
         this.timelineExport = document.getElementById('timelineExport');
         this.currencyExport = document.getElementById('currencyExport');
+        this.timelineReset = document.getElementById('timelineReset');
+        
+        // Modal elements
+        this.modal = document.getElementById('transactionModal');
+        this.modalClose = document.getElementById('modalClose');
+        this.tabBtns = document.querySelectorAll('.tab-btn');
+        this.tabContents = document.querySelectorAll('.tab-content');
     }
 
     bindEvents() {
@@ -55,6 +62,33 @@ class AlderbachDashboard {
         this.currencyMetric.addEventListener('change', () => this.updateCurrencyChart());
         this.timelineExport.addEventListener('click', () => this.exportChart('timeline'));
         this.currencyExport.addEventListener('click', () => this.exportChart('currency'));
+        this.timelineReset.addEventListener('click', () => this.resetTimelineZoom());
+        
+        // Add chart reset zoom functionality
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'r' && e.ctrlKey && this.charts.timeline) {
+                this.resetTimelineZoom();
+            }
+            if (e.key === 'Escape' && this.modal.style.display === 'block') {
+                this.closeTransactionModal();
+            }
+        });
+        
+        // Modal events
+        this.modalClose.addEventListener('click', () => this.closeTransactionModal());
+        this.modal.addEventListener('click', (e) => {
+            if (e.target === this.modal) {
+                this.closeTransactionModal();
+            }
+        });
+        
+        // Tab switching
+        this.tabBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tabName = btn.dataset.tab;
+                this.switchModalTab(tabName);
+            });
+        });
     }
 
     async loadData() {
@@ -69,7 +103,7 @@ class AlderbachDashboard {
         this.logger.info('Starting data load', { file: selectedFile });
 
         this.loading.style.display = 'block';
-        this.transactionsBody.innerHTML = '<tr><td colspan="5" class="no-data">Loading...</td></tr>';
+        this.transactionsBody.innerHTML = '<tr><td colspan="6" class="no-data">Loading...</td></tr>';
 
         try {
             const response = await fetch(selectedFile);
@@ -163,14 +197,17 @@ class AlderbachDashboard {
                 const people = this.extractPeopleAndPlaces(entry);
 
                 if (entry) {  // Only add transactions with entry text
+                    const transactionId = this.transactions.length;
                     this.transactions.push({
-                        id: `T${index + 1}`,
+                        id: transactionId,
+                        originalId: `T${index + 1}`,
                         date: when || '',
                         entry: entry,
                         amounts: amounts,
                         totalFlorinValue: totalFlorinValue,
                         type: type,
-                        people: people
+                        people: people,
+                        rawXML: transactionElement ? transactionElement.outerHTML : ''
                     });
                 }
             } catch (error) {
@@ -341,7 +378,7 @@ class AlderbachDashboard {
 
     renderTransactions() {
         if (this.filteredTransactions.length === 0) {
-            this.transactionsBody.innerHTML = '<tr><td colspan="5" class="no-data">No transactions found</td></tr>';
+            this.transactionsBody.innerHTML = '<tr><td colspan="6" class="no-data">No transactions found</td></tr>';
             return;
         }
 
@@ -376,6 +413,7 @@ class AlderbachDashboard {
                     <td class="amount">${amountDisplay}</td>
                     <td><span class="currency">${currencyDisplay}</span></td>
                     <td><span class="transaction-type type-${transaction.type}">${transaction.type}</span></td>
+                    <td><button class="action-btn" onclick="dashboard.openTransactionModal(${transaction.id})">Details</button></td>
                 </tr>
             `;
         }).join('');
@@ -451,6 +489,9 @@ class AlderbachDashboard {
                 ]
             };
 
+            // Register the zoom plugin
+            Chart.register(ChartZoom);
+            
             this.initializeTimelineChart();
             this.initializeCurrencyChart();
             
@@ -515,7 +556,13 @@ class AlderbachDashboard {
                                 });
                             },
                             label: (context) => {
-                                return `${context.parsed.y.toFixed(2)} florins (${this.getTransactionCount(context.parsed.x)} transactions)`;
+                                const dateStr = new Date(context.parsed.x).toLocaleDateString();
+                                const transactionCount = this.getTransactionCount(context.parsed.x);
+                                return [
+                                    `${context.parsed.y.toFixed(2)} florins`,
+                                    `${transactionCount} transactions`,
+                                    `Click to view details for ${dateStr}`
+                                ];
                             }
                         }
                     }
@@ -550,6 +597,38 @@ class AlderbachDashboard {
                 interaction: {
                     intersect: false,
                     mode: 'index'
+                },
+                plugins: {
+                    zoom: {
+                        zoom: {
+                            wheel: {
+                                enabled: true,
+                            },
+                            pinch: {
+                                enabled: true
+                            },
+                            mode: 'x',
+                            onZoomComplete: ({chart}) => {
+                                this.logger.info('Chart zoomed', {
+                                    xMin: chart.scales.x.min,
+                                    xMax: chart.scales.x.max
+                                });
+                            }
+                        },
+                        pan: {
+                            enabled: true,
+                            mode: 'x',
+                            onPanComplete: ({chart}) => {
+                                this.logger.info('Chart panned', {
+                                    xMin: chart.scales.x.min,
+                                    xMax: chart.scales.x.max
+                                });
+                            }
+                        },
+                        limits: {
+                            x: {min: 'original', max: 'original'}
+                        }
+                    }
                 }
             }
         });
@@ -665,6 +744,13 @@ class AlderbachDashboard {
         
         const duration = this.logger.endTimer(timerId, 'currency chart update');
         this.logger.logChartUpdate('currency', 4, duration);
+    }
+
+    resetTimelineZoom() {
+        if (this.charts.timeline) {
+            this.charts.timeline.resetZoom();
+            this.logger.info('Timeline chart zoom reset');
+        }
     }
 
     aggregateTimelineData(transactions, unit) {
@@ -852,11 +938,150 @@ class AlderbachDashboard {
             originalCount: this.transactions.length
         });
     }
+
+    openTransactionModal(transactionId) {
+        const transaction = this.transactions.find(t => t.id === transactionId);
+        if (!transaction) {
+            this.logger.warn('Transaction not found for modal', { id: transactionId });
+            return;
+        }
+        
+        this.logger.info('Opening transaction modal', { 
+            id: transactionId, 
+            originalId: transaction.originalId 
+        });
+        
+        // Fill overview tab
+        document.getElementById('modalDate').textContent = transaction.date || 'Unknown';
+        document.getElementById('modalAmount').textContent = 
+            transaction.amounts.length > 0 
+                ? transaction.amounts.map(a => `${a.amount} ${a.currency}`).join(', ')
+                : 'Not specified';
+        document.getElementById('modalCurrency').textContent = 
+            transaction.amounts.length > 0
+                ? [...new Set(transaction.amounts.map(a => a.currency))].join(', ')
+                : 'None';
+        document.getElementById('modalType').textContent = transaction.type || 'Unknown';
+        document.getElementById('modalEntry').textContent = transaction.entry || 'No entry text';
+        
+        // Fill raw XML tab
+        document.getElementById('modalXML').textContent = 
+            transaction.rawXML || 'No raw XML data available';
+        
+        // Fill entities tab
+        this.loadEntitiesTab(transaction);
+        
+        // Fill related transactions tab
+        this.loadRelatedTab(transaction);
+        
+        // Show modal and switch to overview tab
+        this.modal.style.display = 'block';
+        this.switchModalTab('overview');
+    }
+    
+    closeTransactionModal() {
+        this.modal.style.display = 'none';
+        this.logger.info('Transaction modal closed');
+    }
+    
+    switchModalTab(tabName) {
+        // Update tab buttons
+        this.tabBtns.forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.tab === tabName);
+        });
+        
+        // Update tab contents
+        this.tabContents.forEach(content => {
+            content.classList.toggle('active', content.id === `tab-${tabName}`);
+        });
+        
+        this.logger.debug('Modal tab switched', { tab: tabName });
+    }
+    
+    loadEntitiesTab(transaction) {
+        const entitiesDiv = document.getElementById('modalEntities');
+        
+        if (transaction.people && transaction.people.length > 0) {
+            const peopleHtml = transaction.people.map(person => 
+                `<div class="entity-item">
+                    <span class="entity-type">👤 Person:</span>
+                    <span class="entity-name">${person}</span>
+                </div>`
+            ).join('');
+            
+            entitiesDiv.innerHTML = `
+                <div class="entities-section">
+                    <h4>Extracted Entities</h4>
+                    ${peopleHtml}
+                </div>
+            `;
+        } else {
+            entitiesDiv.innerHTML = '<div class="no-entities">No entities extracted from this transaction.</div>';
+        }
+    }
+    
+    loadRelatedTab(transaction) {
+        const relatedDiv = document.getElementById('modalRelated');
+        
+        // Find related transactions by date proximity, people, or similar amounts
+        const related = this.transactions.filter(t => {
+            if (t.id === transaction.id) return false;
+            
+            // Date proximity (within 7 days)
+            if (transaction.date && t.date) {
+                const date1 = new Date(transaction.date);
+                const date2 = new Date(t.date);
+                const daysDiff = Math.abs(date1 - date2) / (1000 * 60 * 60 * 24);
+                if (daysDiff <= 7) return true;
+            }
+            
+            // Shared people
+            if (transaction.people && t.people) {
+                const sharedPeople = transaction.people.some(p => 
+                    t.people.some(tp => tp.toLowerCase() === p.toLowerCase())
+                );
+                if (sharedPeople) return true;
+            }
+            
+            // Similar amounts (within 10%)
+            if (transaction.totalFlorinValue > 0 && t.totalFlorinValue > 0) {
+                const ratio = Math.min(transaction.totalFlorinValue, t.totalFlorinValue) /
+                            Math.max(transaction.totalFlorinValue, t.totalFlorinValue);
+                if (ratio > 0.9) return true;
+            }
+            
+            return false;
+        }).slice(0, 5); // Limit to 5 related transactions
+        
+        if (related.length > 0) {
+            const relatedHtml = related.map(t => `
+                <div class="related-item">
+                    <div class="related-date">${t.date || 'Unknown date'}</div>
+                    <div class="related-entry">${t.entry.substring(0, 100)}${t.entry.length > 100 ? '...' : ''}</div>
+                    <div class="related-amount">${
+                        t.amounts.length > 0 
+                            ? t.amounts.map(a => `${a.amount} ${a.currency}`).join(', ')
+                            : 'No amount'
+                    }</div>
+                    <button class="action-btn" onclick="dashboard.openTransactionModal(${t.id})">View Details</button>
+                </div>
+            `).join('');
+            
+            relatedDiv.innerHTML = `
+                <div class="related-section">
+                    <h4>Found ${related.length} Related Transaction${related.length > 1 ? 's' : ''}</h4>
+                    ${relatedHtml}
+                </div>
+            `;
+        } else {
+            relatedDiv.innerHTML = '<div class="no-related">No related transactions found.</div>';
+        }
+    }
 }
 
 // Initialize dashboard when page loads
 document.addEventListener('DOMContentLoaded', () => {
-    window.dashboardInstance = new AlderbachDashboard();
+    window.dashboard = new AlderbachDashboard();
     
     // Enable performance monitoring in development
     if (window.location.hostname === 'localhost') {

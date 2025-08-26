@@ -7,10 +7,79 @@
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
     <script src="logger.js"></script>
     <script src="tests.js"></script>
 </head>
 <body>
+    <!-- Transaction Detail Modal -->
+    <div id="transactionModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>📜 Transaction Details</h2>
+                <span class="modal-close" id="modalClose">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="modal-tabs">
+                    <button class="tab-btn active" data-tab="overview">Overview</button>
+                    <button class="tab-btn" data-tab="raw">Raw XML</button>
+                    <button class="tab-btn" data-tab="entities">Entities</button>
+                    <button class="tab-btn" data-tab="related">Related</button>
+                </div>
+                
+                <div class="tab-content active" id="tab-overview">
+                    <div class="detail-section">
+                        <h3>📅 Transaction Information</h3>
+                        <div class="detail-grid">
+                            <div class="detail-item">
+                                <label>Date:</label>
+                                <span id="modalDate">-</span>
+                            </div>
+                            <div class="detail-item">
+                                <label>Amount:</label>
+                                <span id="modalAmount">-</span>
+                            </div>
+                            <div class="detail-item">
+                                <label>Currency:</label>
+                                <span id="modalCurrency">-</span>
+                            </div>
+                            <div class="detail-item">
+                                <label>Type:</label>
+                                <span id="modalType">-</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="detail-section">
+                        <h3>📝 Original Entry</h3>
+                        <div class="entry-text" id="modalEntry">-</div>
+                    </div>
+                </div>
+                
+                <div class="tab-content" id="tab-raw">
+                    <div class="detail-section">
+                        <h3>🔍 Raw XML Data</h3>
+                        <pre class="xml-display" id="modalXML">-</pre>
+                    </div>
+                </div>
+                
+                <div class="tab-content" id="tab-entities">
+                    <div class="detail-section">
+                        <h3>👥 Extracted Entities</h3>
+                        <div id="modalEntities">Loading entities...</div>
+                    </div>
+                </div>
+                
+                <div class="tab-content" id="tab-related">
+                    <div class="detail-section">
+                        <h3>🔗 Related Transactions</h3>
+                        <div id="modalRelated">Finding related transactions...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="dashboard">
         <header class="header">
             <h1>📜 Aldersbach Monastery Financial Records</h1>
@@ -83,12 +152,16 @@
                 <h3>📊 Transaction Timeline</h3>
                 <div class="chart-controls">
                     <button id="timelineExport" class="chart-export-btn">Export Chart</button>
+                    <button id="timelineReset" class="chart-control-btn">Reset Zoom</button>
                     <select id="timelineAggregation">
                         <option value="day">Daily</option>
                         <option value="week">Weekly</option>
                         <option value="month" selected>Monthly</option>
                         <option value="year">Yearly</option>
                     </select>
+                </div>
+                <div class="chart-help">
+                    <small>💡 Scroll to zoom, drag to pan, Ctrl+R to reset</small>
                 </div>
                 <div class="chart-wrapper">
                     <canvas id="timelineChart" width="400" height="200"></canvas>
@@ -123,11 +196,12 @@
                         <th>Amount</th>
                         <th>Currency</th>
                         <th>Type</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody id="transactionsBody">
                     <tr>
-                        <td colspan="5" class="no-data">Select a data file to view transactions</td>
+                        <td colspan="6" class="no-data">Select a data file to view transactions</td>
                     </tr>
                 </tbody>
             </table>
