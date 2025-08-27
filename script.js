@@ -23,6 +23,9 @@ class AlderbachDashboard {
         
         this.logger.success('Dashboard initialized successfully');
         
+        // Make dashboard globally accessible for compatibility
+        window.dashboard = this;
+        
         // Add error reporting to help debug issues
         window.onerror = (msg, url, line, col, error) => {
             this.logger.error('JavaScript error caught', {
@@ -95,16 +98,36 @@ class AlderbachDashboard {
         this.nextButton.addEventListener('click', () => this.changePage(1));
         
         // Chart events
-        this.timelineAggregation.addEventListener('change', () => this.updateTimelineChart());
-        this.currencyMetric.addEventListener('change', () => this.updateCurrencyChart());
-        this.histogramBuckets.addEventListener('change', () => this.updateHistogramChart());
-        this.histogramCurrency.addEventListener('change', () => this.updateHistogramChart());
-        this.seasonalView.addEventListener('change', () => this.updateSeasonalChart());
-        this.timelineExport.addEventListener('click', () => this.exportChart('timeline'));
-        this.currencyExport.addEventListener('click', () => this.exportChart('currency'));
-        this.histogramExport.addEventListener('click', () => this.exportChart('histogram'));
-        this.seasonalExport.addEventListener('click', () => this.exportChart('seasonal'));
-        this.timelineReset.addEventListener('click', () => this.resetTimelineZoom());
+        if (this.timelineAggregation) {
+            this.timelineAggregation.addEventListener('change', () => this.updateTimelineChart());
+        }
+        if (this.currencyMetric) {
+            this.currencyMetric.addEventListener('change', () => this.updateCurrencyChart());
+        }
+        if (this.histogramBuckets) {
+            this.histogramBuckets.addEventListener('change', () => this.updateHistogramChart());
+        }
+        if (this.histogramCurrency) {
+            this.histogramCurrency.addEventListener('change', () => this.updateHistogramChart());
+        }
+        if (this.seasonalView) {
+            this.seasonalView.addEventListener('change', () => this.updateSeasonalChart());
+        }
+        if (this.timelineExport) {
+            this.timelineExport.addEventListener('click', () => this.exportChart('timeline'));
+        }
+        if (this.currencyExport) {
+            this.currencyExport.addEventListener('click', () => this.exportChart('currency'));
+        }
+        if (this.histogramExport) {
+            this.histogramExport.addEventListener('click', () => this.exportChart('histogram'));
+        }
+        if (this.seasonalExport) {
+            this.seasonalExport.addEventListener('click', () => this.exportChart('seasonal'));
+        }
+        if (this.timelineReset) {
+            this.timelineReset.addEventListener('click', () => this.resetTimelineZoom());
+        }
         
         // Add chart reset zoom functionality
         document.addEventListener('keydown', (e) => {
@@ -138,6 +161,16 @@ class AlderbachDashboard {
                 }
             });
         }
+        
+        // Event delegation for Details buttons in transaction table
+        this.transactionsBody.addEventListener('click', (e) => {
+            if (e.target.classList.contains('action-btn')) {
+                const transactionId = parseInt(e.target.dataset.transactionId);
+                if (!isNaN(transactionId)) {
+                    this.openTransactionModal(transactionId);
+                }
+            }
+        });
         
         // Tab switching
         if (this.tabBtns.length > 0) {
@@ -472,7 +505,7 @@ class AlderbachDashboard {
                     <td class="amount">${amountDisplay}</td>
                     <td><span class="currency">${currencyDisplay}</span></td>
                     <td><span class="transaction-type type-${transaction.type}">${transaction.type}</span></td>
-                    <td><button class="action-btn" onclick="dashboard.openTransactionModal(${transaction.id})">Details</button></td>
+                    <td><button class="action-btn" data-transaction-id="${transaction.id}">Details</button></td>
                 </tr>
             `;
         }).join('');
@@ -729,8 +762,8 @@ class AlderbachDashboard {
                         // Filter by clicked date
                         const date = new Date(data.x);
                         const dateStr = date.toISOString().split('T')[0];
-                        this.searchInput.value = dateStr;
-                        this.filterTransactions();
+                        this.searchBox.value = dateStr;
+                        this.applyFilters();
                         
                         // Scroll to filtered results
                         this.transactionTable.scrollIntoView({ behavior: 'smooth' });
@@ -1050,7 +1083,7 @@ class AlderbachDashboard {
     updateHistogramChart() {
         const timerId = this.logger.startTimer('histogram_update');
         
-        if (!this.charts.histogram) return;
+        if (!this.charts.histogram || !this.histogramBuckets || !this.histogramCurrency) return;
         
         const bucketCount = parseInt(this.histogramBuckets.value);
         const selectedCurrency = this.histogramCurrency.value;
@@ -1115,7 +1148,7 @@ class AlderbachDashboard {
     updateSeasonalChart() {
         const timerId = this.logger.startTimer('seasonal_update');
         
-        if (!this.charts.seasonal) return;
+        if (!this.charts.seasonal || !this.seasonalView) return;
         
         const view = this.seasonalView.value;
         let labels = [];
@@ -1516,7 +1549,7 @@ class AlderbachDashboard {
         }
         
         const metadata = {
-            searchQuery: this.searchInput.value,
+            searchQuery: this.searchBox.value,
             currencyFilter: this.currencyFilter.value,
             sortBy: this.sortBy.value,
             totalTransactions: this.transactions.length,
@@ -1719,11 +1752,21 @@ class AlderbachDashboard {
         })
         .filter(r => r !== null)
         .sort((a, b) => b.score - a.score)
-        .slice(0, 5)
+        .slice(0, 5);
         
         if (related.length > 0) {
             const relatedHtml = related.map(item => {
+                // Safety check for item structure
+                if (!item || !item.transaction) {
+                    console.warn('Invalid related item structure', item);
+                    return '';
+                }
                 const t = item.transaction;
+                // Additional safety check for transaction object
+                if (!t) {
+                    console.warn('Transaction is undefined in related item');
+                    return '';
+                }
                 const relevanceLabel = item.score > 5 ? '⭐ High' : item.score > 2 ? '✨ Medium' : '💫 Low';
                 return `
                     <div class="related-item">
@@ -1739,7 +1782,7 @@ class AlderbachDashboard {
                         </div>
                     </div>
                 `;
-            }).join('');
+            }).filter(html => html !== '').join('');
             
             relatedDiv.innerHTML = `
                 <div class="related-section">

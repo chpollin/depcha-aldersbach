@@ -4,8 +4,54 @@
  */
 
 // Test suite function - called from debug utilities
+// Define ChartTester class if it doesn't exist
+class ChartTester {
+    constructor(dashboard, logger) {
+        this.dashboard = dashboard;
+        this.logger = logger;
+        this.tests = [];
+        this.results = { passed: 0, failed: 0, total: 0 };
+    }
+    
+    addTest(name, fn) {
+        this.tests.push({ name, fn });
+        return this;
+    }
+    
+    assert(condition, message) {
+        if (!condition) throw new Error(message || 'Assertion failed');
+    }
+    
+    assertEqual(actual, expected, message) {
+        if (actual !== expected) {
+            throw new Error(message || `Expected ${expected} but got ${actual}`);
+        }
+    }
+    
+    assertExists(obj, message) {
+        if (typeof obj === 'undefined' || obj === null) {
+            throw new Error(message || 'Object does not exist');
+        }
+    }
+    
+    runAll() {
+        this.tests.forEach(test => {
+            try {
+                test.fn();
+                this.results.passed++;
+                this.logger.success(`✓ ${test.name}`);
+            } catch (error) {
+                this.results.failed++;
+                this.logger.error(`✗ ${test.name}: ${error.message}`);
+            }
+            this.results.total++;
+        });
+        return this.results;
+    }
+}
+
 window.runDashboardTests = async function() {
-    const dashboard = window.dashboardInstance;
+    const dashboard = window.dashboardInstance || window.dashboard;
     const logger = window.Logger;
     
     if (!dashboard) {
@@ -99,7 +145,6 @@ window.runDashboardTests = async function() {
                 tester.assertEqual(aggregated.length, 1, 'Should aggregate to 1 month');
                 tester.assertEqual(aggregated[0].y, 15, 'Should sum values correctly');
             });
-    }
 
     // Search and Filter Tests
     tester
@@ -224,7 +269,7 @@ window.runDashboardTests = async function() {
         });
 
     // Run the complete test suite
-    const results = await tester.runAll();
+    const results = tester.runAll();
     
     // Log final results
     logger.info('=== TEST SUMMARY ===', {
