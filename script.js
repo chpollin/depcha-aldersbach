@@ -14,8 +14,9 @@ class AlderbachDashboard {
         
         this.logger.info('Dashboard constructor started');
         
-        // Initialize export manager
+        // Initialize export managers
         this.exportManager = new ExportManager(this);
+        this.pdfExporter = new PDFExporter(this);
         
         this.initializeElements();
         this.bindEvents();
@@ -1566,9 +1567,25 @@ class AlderbachDashboard {
         }
     }
     
-    handlePDFExport() {
-        this.showNotification('PDF export coming soon!', 'info');
-        // This will be implemented when jsPDF is integrated
+    async handlePDFExport() {
+        if (this.filteredTransactions.length === 0) {
+            this.showNotification('No transactions to export', 'warning');
+            return;
+        }
+        
+        // Show loading notification
+        this.showNotification('Generating PDF report...', 'info');
+        
+        // Generate the PDF
+        const success = await this.pdfExporter.generateReport(this.filteredTransactions, {
+            filename: `aldersbach_report_${new Date().toISOString().split('T')[0]}.pdf`
+        });
+        
+        if (success) {
+            this.showNotification(`PDF report generated successfully!`, 'success');
+        } else {
+            this.showNotification('PDF generation failed - check console for details', 'error');
+        }
     }
     
     switchModalTab(tabName) {
