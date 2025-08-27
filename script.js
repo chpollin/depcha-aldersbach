@@ -4,10 +4,18 @@ class AlderbachDashboard {
         this.filteredTransactions = [];
         this.currentPage = 1;
         this.transactionsPerPage = 50;
-        this.charts = {};
+        this.charts = {
+            timeline: null,
+            currency: null,
+            histogram: null,
+            seasonal: null
+        };
         this.logger = window.Logger;
         
         this.logger.info('Dashboard constructor started');
+        
+        // Initialize export manager
+        this.exportManager = new ExportManager(this);
         
         this.initializeElements();
         this.bindEvents();
@@ -48,10 +56,17 @@ class AlderbachDashboard {
         // Chart elements
         this.timelineCanvas = document.getElementById('timelineChart');
         this.currencyCanvas = document.getElementById('currencyChart');
+        this.histogramCanvas = document.getElementById('histogramChart');
+        this.seasonalCanvas = document.getElementById('seasonalChart');
         this.timelineAggregation = document.getElementById('timelineAggregation');
         this.currencyMetric = document.getElementById('currencyMetric');
+        this.histogramBuckets = document.getElementById('histogramBuckets');
+        this.histogramCurrency = document.getElementById('histogramCurrency');
+        this.seasonalView = document.getElementById('seasonalView');
         this.timelineExport = document.getElementById('timelineExport');
         this.currencyExport = document.getElementById('currencyExport');
+        this.histogramExport = document.getElementById('histogramExport');
+        this.seasonalExport = document.getElementById('seasonalExport');
         this.timelineReset = document.getElementById('timelineReset');
         
         // Modal elements
@@ -59,6 +74,11 @@ class AlderbachDashboard {
         this.modalClose = document.getElementById('modalClose');
         this.tabBtns = document.querySelectorAll('.tab-btn');
         this.tabContents = document.querySelectorAll('.tab-content');
+        
+        // Export buttons
+        this.exportCSVBtn = document.getElementById('exportCSV');
+        this.exportJSONBtn = document.getElementById('exportJSON');
+        this.exportPDFBtn = document.getElementById('exportPDF');
         
         // Check if modal elements exist
         if (!this.modal || !this.modalClose) {
@@ -77,8 +97,13 @@ class AlderbachDashboard {
         // Chart events
         this.timelineAggregation.addEventListener('change', () => this.updateTimelineChart());
         this.currencyMetric.addEventListener('change', () => this.updateCurrencyChart());
+        this.histogramBuckets.addEventListener('change', () => this.updateHistogramChart());
+        this.histogramCurrency.addEventListener('change', () => this.updateHistogramChart());
+        this.seasonalView.addEventListener('change', () => this.updateSeasonalChart());
         this.timelineExport.addEventListener('click', () => this.exportChart('timeline'));
         this.currencyExport.addEventListener('click', () => this.exportChart('currency'));
+        this.histogramExport.addEventListener('click', () => this.exportChart('histogram'));
+        this.seasonalExport.addEventListener('click', () => this.exportChart('seasonal'));
         this.timelineReset.addEventListener('click', () => this.resetTimelineZoom());
         
         // Add chart reset zoom functionality
@@ -90,6 +115,17 @@ class AlderbachDashboard {
                 this.closeTransactionModal();
             }
         });
+        
+        // Export events
+        if (this.exportCSVBtn) {
+            this.exportCSVBtn.addEventListener('click', () => this.handleCSVExport());
+        }
+        if (this.exportJSONBtn) {
+            this.exportJSONBtn.addEventListener('click', () => this.handleJSONExport());
+        }
+        if (this.exportPDFBtn) {
+            this.exportPDFBtn.addEventListener('click', () => this.handlePDFExport());
+        }
         
         // Modal events
         if (this.modalClose) {
@@ -535,6 +571,8 @@ class AlderbachDashboard {
             
             this.initializeTimelineChart();
             this.initializeCurrencyChart();
+            this.initializeHistogramChart();
+            this.initializeSeasonalChart();
             
             this.logger.success('Charts initialized successfully');
             
@@ -545,7 +583,7 @@ class AlderbachDashboard {
             });
             
             // Set fallback for missing charts
-            this.charts = { timeline: null, currency: null };
+            this.charts = { timeline: null, currency: null, histogram: null, seasonal: null };
         }
     }
 
@@ -632,12 +670,21 @@ class AlderbachDashboard {
                             },
                             label: (context) => {
                                 const dateStr = new Date(context.parsed.x).toLocaleDateString();
-                                const transactionCount = this.getTransactionCount(context.parsed.x);
+                                const transactionCount = this.getTransactionCountForDate(context.parsed.x);
+                                const avgAmount = this.getAverageAmountForDate(context.parsed.x);
                                 return [
-                                    `${context.parsed.y.toFixed(2)} florins`,
-                                    `${transactionCount} transactions`,
-                                    `Click to view details for ${dateStr}`
+                                    `Total: ${context.parsed.y.toFixed(2)} florins`,
+                                    `Transactions: ${transactionCount}`,
+                                    `Average: ${avgAmount.toFixed(2)} florins`,
+                                    `Click to filter by this date`
                                 ];
+                            },
+                            afterLabel: (context) => {
+                                const data = context.dataset.data[context.dataIndex];
+                                if (data.originalEntry) {
+                                    return `Entry: ${data.originalEntry.substring(0, 50)}...`;
+                                }
+                                return '';
                             }
                         }
                     }
@@ -672,6 +719,24 @@ class AlderbachDashboard {
                 interaction: {
                     intersect: false,
                     mode: 'index'
+                },
+                onClick: (event, activeElements) => {
+                    if (activeElements.length > 0) {
+                        const elementIndex = activeElements[0].index;
+                        const datasetIndex = activeElements[0].datasetIndex;
+                        const data = this.charts.timeline.data.datasets[datasetIndex].data[elementIndex];
+                        
+                        // Filter by clicked date
+                        const date = new Date(data.x);
+                        const dateStr = date.toISOString().split('T')[0];
+                        this.searchInput.value = dateStr;
+                        this.filterTransactions();
+                        
+                        // Scroll to filtered results
+                        this.transactionTable.scrollIntoView({ behavior: 'smooth' });
+                        
+                        this.logger.info('Timeline click - filtering by date', { date: dateStr });
+                    }
                 },
                 plugins: Object.keys(zoomConfig).length > 0 ? zoomConfig : {}
             }
@@ -750,11 +815,203 @@ class AlderbachDashboard {
         }
     }
 
+    initializeHistogramChart() {
+        try {
+            if (!this.histogramCanvas) {
+                this.logger.warn('Histogram canvas element not found');
+                return;
+            }
+            
+            const ctx = this.histogramCanvas.getContext('2d');
+            
+            this.charts.histogram = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Transaction Count',
+                        data: [],
+                        backgroundColor: 'rgba(139, 69, 19, 0.6)',
+                        borderColor: this.medievalColors.primary,
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Distribution of Transaction Amounts',
+                            color: this.medievalColors.primary,
+                            font: { size: 16, weight: 'bold' }
+                        },
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(139, 69, 19, 0.9)',
+                            titleColor: '#fff',
+                            bodyColor: '#fff',
+                            callbacks: {
+                                title: (context) => {
+                                    return `Amount Range: ${context[0].label}`;
+                                },
+                                label: (context) => {
+                                    const percentage = ((context.parsed.y / this.filteredTransactions.length) * 100).toFixed(1);
+                                    return [
+                                        `Transactions: ${context.parsed.y}`,
+                                        `Percentage: ${percentage}%`
+                                    ];
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Amount Range (Florins)',
+                                color: this.medievalColors.primary
+                            },
+                            grid: { color: 'rgba(139, 69, 19, 0.1)' },
+                            ticks: { 
+                                color: this.medievalColors.primary,
+                                maxRotation: 45,
+                                minRotation: 45
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Number of Transactions',
+                                color: this.medievalColors.primary
+                            },
+                            grid: { color: 'rgba(139, 69, 19, 0.1)' },
+                            ticks: { color: this.medievalColors.primary }
+                        }
+                    }
+                }
+            });
+            
+            this.logger.debug('Histogram chart created successfully');
+            
+        } catch (error) {
+            this.logger.error('Histogram chart creation failed', {
+                error: error.message,
+                stack: error.stack
+            });
+            this.charts.histogram = null;
+        }
+    }
+
+    initializeSeasonalChart() {
+        try {
+            if (!this.seasonalCanvas) {
+                this.logger.warn('Seasonal canvas element not found');
+                return;
+            }
+            
+            const ctx = this.seasonalCanvas.getContext('2d');
+            
+            this.charts.seasonal = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Average Transaction Value',
+                        data: [],
+                        borderColor: this.medievalColors.primary,
+                        backgroundColor: 'rgba(139, 69, 19, 0.1)',
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.4
+                    }, {
+                        label: 'Transaction Count',
+                        data: [],
+                        borderColor: this.medievalColors.secondary,
+                        backgroundColor: 'rgba(139, 69, 19, 0.05)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4,
+                        yAxisID: 'y1'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Seasonal Transaction Patterns',
+                            color: this.medievalColors.primary,
+                            font: { size: 16, weight: 'bold' }
+                        },
+                        legend: {
+                            labels: { color: this.medievalColors.primary }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(139, 69, 19, 0.9)',
+                            titleColor: '#fff',
+                            bodyColor: '#fff'
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Period',
+                                color: this.medievalColors.primary
+                            },
+                            grid: { color: 'rgba(139, 69, 19, 0.1)' },
+                            ticks: { color: this.medievalColors.primary }
+                        },
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: {
+                                display: true,
+                                text: 'Average Value (Florins)',
+                                color: this.medievalColors.primary
+                            },
+                            grid: { color: 'rgba(139, 69, 19, 0.1)' },
+                            ticks: { color: this.medievalColors.primary }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            title: {
+                                display: true,
+                                text: 'Transaction Count',
+                                color: this.medievalColors.secondary
+                            },
+                            grid: { drawOnChartArea: false },
+                            ticks: { color: this.medievalColors.secondary }
+                        }
+                    }
+                }
+            });
+            
+            this.logger.debug('Seasonal chart created successfully');
+            
+        } catch (error) {
+            this.logger.error('Seasonal chart creation failed', {
+                error: error.message,
+                stack: error.stack
+            });
+            this.charts.seasonal = null;
+        }
+    }
+
     updateCharts() {
         if (this.transactions.length === 0) return;
         
         this.updateTimelineChart();
         this.updateCurrencyChart();
+        this.updateHistogramChart();
+        this.updateSeasonalChart();
     }
 
     updateTimelineChart() {
@@ -788,6 +1045,176 @@ class AlderbachDashboard {
         
         const duration = this.logger.endTimer(timerId, 'currency chart update');
         this.logger.logChartUpdate('currency', 4, duration);
+    }
+
+    updateHistogramChart() {
+        const timerId = this.logger.startTimer('histogram_update');
+        
+        if (!this.charts.histogram) return;
+        
+        const bucketCount = parseInt(this.histogramBuckets.value);
+        const selectedCurrency = this.histogramCurrency.value;
+        
+        // Extract all individual amounts from the RDF data structure
+        let allAmounts = [];
+        this.filteredTransactions.forEach(t => {
+            if (t.amounts && t.amounts.length > 0) {
+                t.amounts.forEach(amountObj => {
+                    if (selectedCurrency === 'all' || amountObj.currency === selectedCurrency) {
+                        allAmounts.push(amountObj.amount);
+                    }
+                });
+            }
+        });
+        
+        // Filter out invalid amounts
+        const amounts = allAmounts.filter(a => a > 0);
+        if (amounts.length === 0) {
+            this.charts.histogram.data.labels = [];
+            this.charts.histogram.data.datasets[0].data = [];
+            this.charts.histogram.update();
+            return;
+        }
+        
+        const minAmount = Math.min(...amounts);
+        const maxAmount = Math.max(...amounts);
+        const bucketSize = (maxAmount - minAmount) / bucketCount;
+        
+        // Create buckets
+        const buckets = new Array(bucketCount).fill(0);
+        const labels = [];
+        
+        for (let i = 0; i < bucketCount; i++) {
+            const rangeStart = minAmount + (i * bucketSize);
+            const rangeEnd = minAmount + ((i + 1) * bucketSize);
+            labels.push(`${rangeStart.toFixed(1)}-${rangeEnd.toFixed(1)}`);
+            
+            // Count transactions in this bucket
+            amounts.forEach(amount => {
+                if (amount >= rangeStart && amount < rangeEnd) {
+                    buckets[i]++;
+                } else if (i === bucketCount - 1 && amount >= rangeStart) {
+                    // Include max value in last bucket
+                    buckets[i]++;
+                }
+            });
+        }
+        
+        // Update chart
+        this.charts.histogram.data.labels = labels;
+        this.charts.histogram.data.datasets[0].data = buckets;
+        
+        const currencyLabel = selectedCurrency === 'all' ? 'All Currencies' : selectedCurrency.toUpperCase();
+        this.charts.histogram.options.plugins.title.text = `Distribution of Transaction Amounts (${currencyLabel})`;
+        this.charts.histogram.update();
+        
+        const duration = this.logger.endTimer(timerId, 'histogram chart update');
+        this.logger.logChartUpdate('histogram', bucketCount, duration);
+    }
+
+    updateSeasonalChart() {
+        const timerId = this.logger.startTimer('seasonal_update');
+        
+        if (!this.charts.seasonal) return;
+        
+        const view = this.seasonalView.value;
+        let labels = [];
+        let avgValues = [];
+        let counts = [];
+        
+        if (view === 'monthly') {
+            // Group by month
+            const monthlyData = new Map();
+            const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            
+            // Initialize all months
+            monthNames.forEach((month, idx) => {
+                monthlyData.set(idx, { total: 0, count: 0 });
+            });
+            
+            this.filteredTransactions.forEach(t => {
+                if (t.date) {  // Using 'date' from RDF structure, not 'when'
+                    const month = new Date(t.date).getMonth();
+                    const data = monthlyData.get(month);
+                    // Sum all amounts (converted to florins) from the transaction
+                    const transactionTotal = t.totalFlorinValue || 0;
+                    data.total += transactionTotal;
+                    data.count++;
+                }
+            });
+            
+            monthNames.forEach((month, idx) => {
+                const data = monthlyData.get(idx);
+                labels.push(month);
+                avgValues.push(data.count > 0 ? data.total / data.count : 0);
+                counts.push(data.count);
+            });
+            
+        } else if (view === 'quarterly') {
+            // Group by quarter
+            const quarterlyData = new Map();
+            const quarterNames = ['Q1', 'Q2', 'Q3', 'Q4'];
+            
+            quarterNames.forEach((quarter, idx) => {
+                quarterlyData.set(idx, { total: 0, count: 0 });
+            });
+            
+            this.filteredTransactions.forEach(t => {
+                if (t.date) {  // Using 'date' from RDF structure
+                    const month = new Date(t.date).getMonth();
+                    const quarter = Math.floor(month / 3);
+                    const data = quarterlyData.get(quarter);
+                    // Use totalFlorinValue from RDF data
+                    data.total += t.totalFlorinValue || 0;
+                    data.count++;
+                }
+            });
+            
+            quarterNames.forEach((quarter, idx) => {
+                const data = quarterlyData.get(idx);
+                labels.push(quarter);
+                avgValues.push(data.count > 0 ? data.total / data.count : 0);
+                counts.push(data.count);
+            });
+            
+        } else if (view === 'weekday') {
+            // Group by day of week
+            const weekdayData = new Map();
+            const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            
+            dayNames.forEach((day, idx) => {
+                weekdayData.set(idx, { total: 0, count: 0 });
+            });
+            
+            this.filteredTransactions.forEach(t => {
+                if (t.date) {  // Using 'date' from RDF structure
+                    const dayOfWeek = new Date(t.date).getDay();
+                    const data = weekdayData.get(dayOfWeek);
+                    // Use totalFlorinValue from RDF data
+                    data.total += t.totalFlorinValue || 0;
+                    data.count++;
+                }
+            });
+            
+            dayNames.forEach((day, idx) => {
+                const data = weekdayData.get(idx);
+                labels.push(day);
+                avgValues.push(data.count > 0 ? data.total / data.count : 0);
+                counts.push(data.count);
+            });
+        }
+        
+        // Update chart
+        this.charts.seasonal.data.labels = labels;
+        this.charts.seasonal.data.datasets[0].data = avgValues;
+        this.charts.seasonal.data.datasets[1].data = counts;
+        
+        const viewLabel = view.charAt(0).toUpperCase() + view.slice(1);
+        this.charts.seasonal.options.plugins.title.text = `${viewLabel} Transaction Patterns`;
+        this.charts.seasonal.update();
+        
+        const duration = this.logger.endTimer(timerId, 'seasonal chart update');
+        this.logger.logChartUpdate('seasonal', labels.length, duration);
     }
 
     resetTimelineZoom() {
@@ -867,6 +1294,37 @@ class AlderbachDashboard {
     getTransactionCount(dateString) {
         const targetDate = new Date(dateString).toISOString().split('T')[0];
         return this.filteredTransactions.filter(t => t.date && t.date.startsWith(targetDate)).length;
+    }
+
+    // Helper function to get transaction count for a specific date timestamp
+    getTransactionCountForDate(timestamp) {
+        const date = new Date(timestamp);
+        const dateStr = date.toISOString().split('T')[0];
+        
+        return this.filteredTransactions.filter(t => {
+            if (!t.when) return false;
+            const tDate = new Date(t.when);
+            const tDateStr = tDate.toISOString().split('T')[0];
+            return tDateStr === dateStr;
+        }).length;
+    }
+
+    // Helper function to get average amount for a specific date timestamp
+    getAverageAmountForDate(timestamp) {
+        const date = new Date(timestamp);
+        const dateStr = date.toISOString().split('T')[0];
+        
+        const dayTransactions = this.filteredTransactions.filter(t => {
+            if (!t.when) return false;
+            const tDate = new Date(t.when);
+            const tDateStr = tDate.toISOString().split('T')[0];
+            return tDateStr === dateStr;
+        });
+        
+        if (dayTransactions.length === 0) return 0;
+        
+        const total = dayTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+        return total / dayTransactions.length;
     }
 
     exportChart(chartType) {
@@ -1034,6 +1492,52 @@ class AlderbachDashboard {
         this.logger.info('Transaction modal closed');
     }
     
+    // Export handlers
+    handleCSVExport() {
+        if (this.filteredTransactions.length === 0) {
+            this.showNotification('No transactions to export', 'warning');
+            return;
+        }
+        
+        const filename = `aldersbach_transactions_${new Date().toISOString().split('T')[0]}.csv`;
+        const success = this.exportManager.exportToCSV(this.filteredTransactions, filename);
+        
+        if (success) {
+            this.showNotification(`Exported ${this.filteredTransactions.length} transactions to CSV`, 'success');
+        } else {
+            this.showNotification('CSV export failed', 'error');
+        }
+    }
+    
+    handleJSONExport() {
+        if (this.filteredTransactions.length === 0) {
+            this.showNotification('No transactions to export', 'warning');
+            return;
+        }
+        
+        const metadata = {
+            searchQuery: this.searchInput.value,
+            currencyFilter: this.currencyFilter.value,
+            sortBy: this.sortBy.value,
+            totalTransactions: this.transactions.length,
+            filteredTransactions: this.filteredTransactions.length
+        };
+        
+        const filename = `aldersbach_transactions_${new Date().toISOString().split('T')[0]}.json`;
+        const success = this.exportManager.exportToJSON(this.filteredTransactions, metadata, filename);
+        
+        if (success) {
+            this.showNotification(`Exported ${this.filteredTransactions.length} transactions to JSON with metadata`, 'success');
+        } else {
+            this.showNotification('JSON export failed', 'error');
+        }
+    }
+    
+    handlePDFExport() {
+        this.showNotification('PDF export coming soon!', 'info');
+        // This will be implemented when jsPDF is integrated
+    }
+    
     switchModalTab(tabName) {
         // Update tab buttons
         this.tabBtns.forEach(btn => {
@@ -1051,71 +1555,191 @@ class AlderbachDashboard {
     loadEntitiesTab(transaction) {
         const entitiesDiv = document.getElementById('modalEntities');
         
-        if (transaction.people && transaction.people.length > 0) {
-            const peopleHtml = transaction.people.map(person => 
-                `<div class="entity-item">
-                    <span class="entity-type">👤 Person:</span>
-                    <span class="entity-name">${person}</span>
-                </div>`
-            ).join('');
-            
-            entitiesDiv.innerHTML = `
-                <div class="entities-section">
-                    <h4>Extracted Entities</h4>
-                    ${peopleHtml}
-                </div>
-            `;
-        } else {
-            entitiesDiv.innerHTML = '<div class="no-entities">No entities extracted from this transaction.</div>';
+        if (!transaction.entry) {
+            entitiesDiv.innerHTML = '<div class="no-data">No text available for entity extraction</div>';
+            return;
         }
+        
+        const text = transaction.entry;
+        const entities = {
+            people: [],
+            places: [],
+            commodities: [],
+            amounts: []
+        };
+        
+        // Extract person names (medieval German patterns)
+        const namePatterns = [
+            /\b([A-ZÄÖÜ][a-zäöüß]+)\s+(?:von\s+)?([A-ZÄÖÜ][a-zäöüß]+)\b/g,
+            /\b([A-ZÄÖÜ][a-zäöüß]+)\s+([A-ZÄÖÜ][a-zäöüß]+mann|mayer|bauer|schmidt|müller|weber)\b/gi,
+            /\bHerr\s+([A-ZÄÖÜ][a-zäöüß]+)\b/g
+        ];
+        
+        namePatterns.forEach(pattern => {
+            let match;
+            while ((match = pattern.exec(text)) !== null) {
+                const fullName = match[0];
+                if (!entities.people.includes(fullName)) {
+                    entities.people.push(fullName);
+                }
+            }
+        });
+        
+        // Extract place names
+        const placePatterns = [
+            /\b(?:zu|von|aus|in|nach)\s+([A-ZÄÖÜ][a-zäöüß]+)\b/g,
+            /\b(Aldersbach|München|Regensburg|Passau|Landshut)\b/gi
+        ];
+        
+        placePatterns.forEach(pattern => {
+            let match;
+            while ((match = pattern.exec(text)) !== null) {
+                const place = match[1] || match[0];
+                if (!entities.places.includes(place)) {
+                    entities.places.push(place);
+                }
+            }
+        });
+        
+        // Extract commodities
+        const commodityKeywords = [
+            'Korn', 'Weizen', 'Gerste', 'Hafer', 'Wein', 'Bier',
+            'Holz', 'Salz', 'Fleisch', 'Käse', 'Butter',
+            'Rind', 'Schwein', 'Schaf', 'Leder', 'Wolle', 'Tuch'
+        ];
+        
+        commodityKeywords.forEach(commodity => {
+            const regex = new RegExp(`\\b${commodity}\\b`, 'gi');
+            if (regex.test(text)) {
+                entities.commodities.push(commodity);
+            }
+        });
+        
+        // Build HTML display
+        let html = '<div class="entities-container">';
+        
+        if (entities.people.length > 0) {
+            html += '<div class="entity-section"><h4>👥 People</h4>';
+            entities.people.forEach(person => {
+                html += `<div class="entity-item">👤 ${person}</div>`;
+            });
+            html += '</div>';
+        }
+        
+        if (entities.places.length > 0) {
+            html += '<div class="entity-section"><h4>📍 Places</h4>';
+            entities.places.forEach(place => {
+                html += `<div class="entity-item">🏛️ ${place}</div>`;
+            });
+            html += '</div>';
+        }
+        
+        if (entities.commodities.length > 0) {
+            html += '<div class="entity-section"><h4>📦 Commodities</h4>';
+            entities.commodities.forEach(commodity => {
+                html += `<div class="entity-item">🌾 ${commodity}</div>`;
+            });
+            html += '</div>';
+        }
+        
+        html += '</div>';
+        
+        if (entities.people.length === 0 && entities.places.length === 0 && entities.commodities.length === 0) {
+            html = '<div class="no-entities">No entities could be extracted from this transaction.</div>';
+        }
+        
+        entitiesDiv.innerHTML = html;
     }
     
     loadRelatedTab(transaction) {
         const relatedDiv = document.getElementById('modalRelated');
         
-        // Find related transactions by date proximity, people, or similar amounts
+        // Extract entities from current transaction for comparison
+        const currentEntities = this.extractEntitiesFromText(transaction.entry || '');
+        
+        // Find related transactions
         const related = this.transactions.filter(t => {
-            if (t.id === transaction.id) return false;
+            if (t === transaction) return false;
+            
+            let score = 0;
             
             // Date proximity (within 7 days)
             if (transaction.date && t.date) {
                 const date1 = new Date(transaction.date);
                 const date2 = new Date(t.date);
                 const daysDiff = Math.abs(date1 - date2) / (1000 * 60 * 60 * 24);
-                if (daysDiff <= 7) return true;
+                if (daysDiff <= 7) score += 2;
+                if (daysDiff <= 1) score += 3;
             }
             
-            // Shared people
-            if (transaction.people && t.people) {
-                const sharedPeople = transaction.people.some(p => 
-                    t.people.some(tp => tp.toLowerCase() === p.toLowerCase())
+            // Similar total florin values (within 20%)
+            if (transaction.totalFlorinValue && t.totalFlorinValue) {
+                const ratio = Math.min(transaction.totalFlorinValue, t.totalFlorinValue) / 
+                             Math.max(transaction.totalFlorinValue, t.totalFlorinValue);
+                if (ratio > 0.8) score += 2;
+            }
+            
+            // Check for same currencies in amounts arrays
+            if (transaction.amounts && t.amounts) {
+                const transCurrencies = transaction.amounts.map(a => a.currency);
+                const tCurrencies = t.amounts.map(a => a.currency);
+                const sameCurrency = transCurrencies.some(c => tCurrencies.includes(c));
+                if (sameCurrency) score += 1;
+            }
+            
+            // Extract and compare entities from related transaction
+            if (t.entry && currentEntities && currentEntities.people.length > 0) {
+                const relatedEntities = this.extractEntitiesFromText(t.entry);
+                
+                // Check for shared people
+                const sharedPeople = currentEntities.people.some(p => 
+                    relatedEntities.people.some(rp => 
+                        rp.toLowerCase().includes(p.toLowerCase()) || 
+                        p.toLowerCase().includes(rp.toLowerCase())
+                    )
                 );
-                if (sharedPeople) return true;
+                if (sharedPeople) score += 3;
+                
+                // Check for shared places
+                const sharedPlaces = currentEntities.places.some(p => 
+                    relatedEntities.places.some(rp => 
+                        rp.toLowerCase() === p.toLowerCase()
+                    )
+                );
+                if (sharedPlaces) score += 2;
+                
+                // Check for shared commodities
+                const sharedCommodities = currentEntities.commodities.some(c => 
+                    relatedEntities.commodities.includes(c)
+                );
+                if (sharedCommodities) score += 1;
             }
             
-            // Similar amounts (within 10%)
-            if (transaction.totalFlorinValue > 0 && t.totalFlorinValue > 0) {
-                const ratio = Math.min(transaction.totalFlorinValue, t.totalFlorinValue) /
-                            Math.max(transaction.totalFlorinValue, t.totalFlorinValue);
-                if (ratio > 0.9) return true;
-            }
-            
-            return false;
-        }).slice(0, 5); // Limit to 5 related transactions
+            return score > 0 ? { transaction: t, score: score } : null;
+        })
+        .filter(r => r !== null)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 5)
         
         if (related.length > 0) {
-            const relatedHtml = related.map(t => `
-                <div class="related-item">
-                    <div class="related-date">${t.date || 'Unknown date'}</div>
-                    <div class="related-entry">${t.entry.substring(0, 100)}${t.entry.length > 100 ? '...' : ''}</div>
-                    <div class="related-amount">${
-                        t.amounts.length > 0 
-                            ? t.amounts.map(a => `${a.amount} ${a.currency}`).join(', ')
-                            : 'No amount'
-                    }</div>
-                    <button class="action-btn" onclick="dashboard.openTransactionModal(${t.id})">View Details</button>
-                </div>
-            `).join('');
+            const relatedHtml = related.map(item => {
+                const t = item.transaction;
+                const relevanceLabel = item.score > 5 ? '⭐ High' : item.score > 2 ? '✨ Medium' : '💫 Low';
+                return `
+                    <div class="related-item">
+                        <div class="related-header">
+                            <span class="related-date">${t.date || 'Unknown date'}</span>
+                            <span class="relevance-badge">${relevanceLabel}</span>
+                        </div>
+                        <div class="related-entry">${(t.entry || '').substring(0, 100)}${(t.entry || '').length > 100 ? '...' : ''}</div>
+                        <div class="related-amount">
+                            ${t.amounts && t.amounts.length > 0 
+                                ? t.amounts.map(a => `${a.amount} ${a.currency}`).join(', ')
+                                : 'No amount'}
+                        </div>
+                    </div>
+                `;
+            }).join('');
             
             relatedDiv.innerHTML = `
                 <div class="related-section">
@@ -1126,6 +1750,46 @@ class AlderbachDashboard {
         } else {
             relatedDiv.innerHTML = '<div class="no-related">No related transactions found.</div>';
         }
+    }
+    
+    // Helper method to extract entities from text
+    extractEntitiesFromText(text) {
+        const entities = {
+            people: [],
+            places: [],
+            commodities: []
+        };
+        
+        if (!text) return entities;
+        
+        // Extract person names
+        const namePatterns = [
+            /\b([A-ZÄÖÜ][a-zäöüß]+)\s+(?:von\s+)?([A-ZÄÖÜ][a-zäöüß]+)\b/g,
+            /\bHerr\s+([A-ZÄÖÜ][a-zäöüß]+)\b/g
+        ];
+        
+        namePatterns.forEach(pattern => {
+            let match;
+            while ((match = pattern.exec(text)) !== null) {
+                entities.people.push(match[0]);
+            }
+        });
+        
+        // Extract places
+        const placePattern = /\b(?:zu|von|aus|in)\s+([A-ZÄÖÜ][a-zäöüß]+)\b/g;
+        let placeMatch;
+        while ((placeMatch = placePattern.exec(text)) !== null) {
+            entities.places.push(placeMatch[1]);
+        }
+        
+        // Extract commodities
+        ['Korn', 'Weizen', 'Gerste', 'Wein', 'Bier', 'Holz', 'Salz'].forEach(commodity => {
+            if (text.includes(commodity)) {
+                entities.commodities.push(commodity);
+            }
+        });
+        
+        return entities;
     }
 }
 

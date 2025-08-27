@@ -9,6 +9,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
     <script src="logger.js"></script>
+    <script src="exportManager.js"></script>
     <script src="tests.js"></script>
 </head>
 <body>
@@ -87,6 +88,11 @@
         </header>
 
         <div class="controls">
+            <div class="control-group export-controls">
+                <button id="exportCSV" class="export-btn">📥 Export CSV</button>
+                <button id="exportJSON" class="export-btn">📄 Export JSON</button>
+                <button id="exportPDF" class="export-btn" disabled>📑 Export PDF (Coming Soon)</button>
+            </div>
             <div class="control-group">
                 <label for="fileSelect">Data File:</label>
                 <select id="fileSelect">
@@ -179,6 +185,43 @@
                 </div>
                 <div class="chart-wrapper">
                     <canvas id="currencyChart" width="400" height="200"></canvas>
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <h3>📈 Amount Distribution</h3>
+                <div class="chart-controls">
+                    <button id="histogramExport" class="chart-export-btn">Export Chart</button>
+                    <select id="histogramBuckets">
+                        <option value="10">10 Buckets</option>
+                        <option value="20" selected>20 Buckets</option>
+                        <option value="50">50 Buckets</option>
+                    </select>
+                    <select id="histogramCurrency">
+                        <option value="all">All Currencies</option>
+                        <option value="f">Florin (f)</option>
+                        <option value="s">Shilling (s)</option>
+                        <option value="d">Denarius (d)</option>
+                        <option value="gr">Groschen (gr)</option>
+                    </select>
+                </div>
+                <div class="chart-wrapper">
+                    <canvas id="histogramChart" width="400" height="200"></canvas>
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <h3>📅 Seasonal Patterns</h3>
+                <div class="chart-controls">
+                    <button id="seasonalExport" class="chart-export-btn">Export Chart</button>
+                    <select id="seasonalView">
+                        <option value="monthly" selected>Monthly</option>
+                        <option value="quarterly">Quarterly</option>
+                        <option value="weekday">Day of Week</option>
+                    </select>
+                </div>
+                <div class="chart-wrapper">
+                    <canvas id="seasonalChart" width="400" height="200"></canvas>
                 </div>
             </div>
         </div>
